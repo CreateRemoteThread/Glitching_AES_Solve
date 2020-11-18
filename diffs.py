@@ -8,11 +8,12 @@ import matplotlib.pyplot as plt
 import binascii
 from Crypto.Cipher import AES
 
-TARGET_ROUND = 2
+import sys
+TARGET_ROUND = int(sys.argv[1])
 
 pts = np.load("glitch/in.npy",mmap_mode="r")
 cts = np.load("glitch/out.npy",mmap_mode="r")
-traces = np.load("glitch/traces.npy",mmap_mode="r")[:,TARGET_ROUND * 120 + 20 - 60:TARGET_ROUND * 120 + 20 + 60]
+traces = np.load("glitch/traces.npy",mmap_mode="r")
 
 key_first = binascii.unhexlify("4b596315d21df5a531079c838e11eee6")
 key_back = binascii.unhexlify("c95c9f4d0054e0376518b43e6e4eb7ab")
@@ -24,7 +25,7 @@ key_back_resolved = binascii.unhexlify("524a41541c0bc85272ef31c0ddc22943")
 # aesCache[1]["lol"] = 2
 # print(aesCache)
 aesCache = {}
-for i in range(0,11):
+for i in range(0,TARGET_ROUND + 1):
   aesCache[i] = {}
 # print(aesCache)
 
@@ -40,42 +41,9 @@ class AESModified:
     state = data
     roundKey = self.key
     state = [state[bnum] ^ roundKey[bnum] for bnum in range(0,16)]
-    # ROUND9 is max.
-    for rnum in range(1,round+1):
+    for rnum in range(1,round):
       if (rnum != round) and (tnum in aesCache[rnum].keys()):
         state = aesCache[rnum][tnum]
-        cacheHit += 1
-      if rnum - 1 in keyModification.keys():
-        localStateModify = keyModification[rnum - 1]
-        state = [state[bnum] ^ localStateModify[bnum] for bnum in range(0,16)]
-      state = subbytes(state)
-      if rnum == round - 1 and round != 10:
-        return state
-      state = shiftrows(state)
-      state = mixcolumns(state)
-      # adding a round key
-      roundKey = key_schedule_rounds(self.key,0,rnum )
-      state = [state[bnum] ^ roundKey[bnum] for bnum in range(0,16)]
-      aesCache[rnum][tnum] = state
-      cacheMiss += 1
-    # ROUND10
-    state = subbytes(state)
-    if round == 10:
-      return state
-    state = shiftrows(state)
-    roundKey = key_schedule_rounds(self.key,0,rnum + 1 )
-    state = [state[bnum] ^ roundKey[bnum] for bnum in range(0,16)]
-    return state
-
-  def FIXED(self,data,round,keyModification,tnum):
-    global cacheHit,cacheMiss
-    state = data
-    roundKey = self.key
-    state = [state[bnum] ^ roundKey[bnum] for bnum in range(0,16)]
-    for rnum in range(0,round):
-      if (rnum != round) and (tnum in aesCache[rnum].keys()):
-        state = aesCache[rnum][tnum]
-        # print("LOAD: DATA:%s ROUND:%d STATE:%s" % (binascii.hexlify(data),rnum,binascii.hexlify(bytes(state))))
         cacheHit += 1
       else:
         if rnum in keyModification.keys():
@@ -86,11 +54,21 @@ class AESModified:
           return state
         state = shiftrows(state)
         state = mixcolumns(state)
-        roundKey = key_schedule_rounds(self.key,0,rnum + 1)
+        # adding a round key
+        roundKey = key_schedule_rounds(self.key,0,rnum )
         state = [state[bnum] ^ roundKey[bnum] for bnum in range(0,16)]
         aesCache[rnum][tnum] = state
-        # print("SAVE: DATA:%s ROUND:%d STATE:%s" % (binascii.hexlify(data),rnum,binascii.hexlify(bytes(state))))
         cacheMiss += 1
+    rnum = 12
+    if rnum in keyModification.keys():
+      localStateModify = keyModification[rnum]
+      state = [state[bnum] ^ localStateModify[bnum] for bnum in range(0,16)]
+    state = subbytes(state)
+    state = shiftrows(state)
+    roundKey = key_schedule_rounds(self.key,0,rnum )
+    state = [state[bnum] ^ roundKey[bnum] for bnum in range(0,16)]
+    if rnum == 10:
+      return state
     return state
 
 aes = AESModified(key_first)
@@ -100,7 +78,7 @@ keyModification = keymod.keyModification
 
 keyGuess = []
 
-for bytepos in range(0,16):
+for bytepos in range(12,13):
   argmaxQDiffs = []
   maxQDiffs = []
   for r1mod in range(0,256):
